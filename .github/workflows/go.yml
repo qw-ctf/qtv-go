@@ -49,3 +49,4 @@ jobs:
         name: "qtv-${{ matrix.os }}-${{ matrix.arch }}"
         path: |
           qtv-go*
+        compression-level: 9
