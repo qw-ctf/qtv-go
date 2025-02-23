@@ -50,3 +50,139 @@ jobs:
         path: |
           qtv-go*
         compression-level: 9
+
+  upload:
+    if: github.repository == 'QW-group/qtv-go' && ((github.event_name == 'push' && github.ref == 'refs/heads/master') || github.event_name == 'release')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get release date
+        run: |
+          RELEASE_DATE=$(git log -1 --format=%cI "${{ github.ref_name }}")
+          echo "RELEASE_DATE=$RELEASE_DATE" >> $GITHUB_ENV
+        working-directory: ezquake
+        if: github.event_name == 'release'
+
+      - name: Collect GitHub release artifacts
+        run: |
+          set -e
+
+          dist_dir="${GITHUB_WORKSPACE}/dist"
+          mkdir "${dist_dir}"
+
+          # Reset timestamp to time of commit before compression
+          find "artifacts" -type f -exec touch --date="${RELEASE_DATE}" {} +
+
+          # Set executable bit for all files
+          find "artifacts" -type f -exec chmod 755 {} +
+
+          # Recompress before attaching to release, avoiding double-zip of macOS
+          (
+            cd artifacts
+            for target in *; do
+              (cd "${target}"; zip -o -9 "${dist_dir}/${target}.zip" *)
+            done;
+          )
+
+          (cd "artifacts"; find . -type f -execdir sha256sum {} \; > "${dist_dir}/checksums.txt")
+
+          # Reset timestamp to time of commit for all release artifacts
+          find "${dist_dir}" -type f -exec touch --date="${RELEASE_DATE}" {} +
+
+          echo "Release artifacts:"
+          ls -lR "${dist_dir}"
+
+          echo "Checksums:"
+          cat "${dist_dir}/checksums.txt"
+
+          echo "GITHUB_ARTIFACTS=${dist_dir}" >> $GITHUB_ENV
+        if: github.event_name == 'release'
+
+      - name: Attach artifacts to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.GITHUB_ARTIFACTS }}/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: github.event_name == 'release'
+
+      - name: Prepare Upload Environemnt
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq --no-install-recommends install openssh-client
+
+      - name: Setup SSH
+        run: |
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+          ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+
+      - name: Prepare upload to builds.quakeworld.nu
+        run: |
+          # Build file structure for uploading
+          # snapshots:
+          #  upload/snapshots/latest/$os/$arch/$filename
+          #  upload/snapshots/$os/$arch/$prefix_$filename
+          # releases:
+          #  upload/releases/latest/$os/$arch/$filename
+          #  upload/releases/$tag/$os/$arch/$filename
+
+          set -e
+
+          # TODO...
+          upload_dir="${GITHUB_WORKSPACE}/upload"
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            main_dir="${upload_dir}/releases/${{ github.ref_name }}"
+            latest_dir="${upload_dir}/releases/latest"
+            prefix=""
+            upload_prefix="releases"
+          else
+            main_dir="${upload_dir}/snapshots"
+            latest_dir="${upload_dir}/snapshots/latest"
+            date=$(TZ="Europe/Amsterdam" date "+%Y%m%d-%H%M%S")
+            prefix="${date}_${GITHUB_SHA::7}_"
+            upload_prefix="snapshots"
+          fi
+
+          # Collect upload structure
+          for artifact in artifacts/*/*; do
+            artifact_file=$(basename "${artifact}")
+            artifact_dir=$(dirname "${artifact}")
+
+            IFS='-' read -r ezq os arch <<< "${artifact_dir}"
+
+            mkdir -p "${main_dir}/${os}/${arch}" "${latest_dir}/${os}/${arch}"
+
+            cp "${artifact}" "${main_dir}/${os}/${arch}/${prefix}${artifact_file}"
+            cp "${artifact}" "${latest_dir}/${os}/${arch}/${artifact_file}"
+          done
+
+          # Set executable bit for all files
+          find "${upload_dir}" -type f -exec chmod 755 {} +
+
+          # Generate checksums
+          for artifact in $(find "${upload_dir}" -type f); do
+            artifact_file=$(basename "${artifact}")
+            artifact_dir=$(dirname "${artifact}")
+            (cd "${artifact_dir}" && md5sum "${artifact_file}" > "${artifact_file}.md5")
+          done
+
+          # Reset timestamp to time of commit
+          find "${upload_dir}" -type f -exec touch --date="${RELEASE_DATE}" {} +
+
+          echo "Upload artifacts:"
+          ls -lR "${upload_dir}"
+
+          echo "UPLOAD_PREFIX=${upload_prefix}" >> $GITHUB_ENV
+
+      - name: Upload to builds.quakeworld.nu
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          sftp -rp -o 'StrictHostKeyChecking no' -o 'UserKnownHostsFile /dev/null' -P ${{ secrets.SFTP_PORT }} ${{ secrets.SFTP_USERNAME }}@${{ secrets.SFTP_HOST }}:/${{ env.UPLOAD_PREFIX }} <<< $'put -rp upload/${{ env.UPLOAD_PREFIX }}/*'
