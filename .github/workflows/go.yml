@@ -1,0 +1,45 @@
+name: main
+
+on:
+  push:
+    # Only build branches on push, tags will be handled by 'release' job.
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+  release:
+    types: [published]
+    
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: arm64
+          - os: linux
+            arch: amd64
+          - os: linux
+            arch: i386
+          - os: windows
+            arch: amd64
+          - os: freebsd
+            arch: amd64
+          - os: openbsd
+            arch: amd64
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: "1.19"
+
+    - name: Build
+      run: go build -v ./...
+      env:
+        GOOS: ${{ matrix.os }}
+        GOARCH: ${{ matrix.arch }}
+        CGO_ENABLED: 1
