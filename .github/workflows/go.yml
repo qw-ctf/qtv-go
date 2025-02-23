@@ -16,6 +16,8 @@ jobs:
       matrix:
         include:
           - os: linux
+            arch: arm
+          - os: linux
             arch: arm64
           - os: linux
             arch: amd64
