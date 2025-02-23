@@ -41,3 +41,5 @@ jobs:
         GOOS: ${{ matrix.os }}
         GOARCH: ${{ matrix.arch }}
         CGO_ENABLED: 0
+    - name: dbg
+      run: find . -type f -name 'qtv-go'
