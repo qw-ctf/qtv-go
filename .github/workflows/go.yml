@@ -42,4 +42,4 @@ jobs:
       env:
         GOOS: ${{ matrix.os }}
         GOARCH: ${{ matrix.arch }}
-        CGO_ENABLED: 1
+        CGO_ENABLED: 0
