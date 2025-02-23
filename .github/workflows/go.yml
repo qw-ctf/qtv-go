@@ -42,4 +42,7 @@ jobs:
         GOARCH: ${{ matrix.arch }}
         CGO_ENABLED: 0
     - name: dbg
-      run: find . -type f -name 'qtv-go'
+      run: |
+        find . -type f -name 'qtv-go'
+        file qtv-go
+        du -sh qtv-go
