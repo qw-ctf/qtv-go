@@ -6,11 +6,35 @@ jobs:
   build:
     timeout-minutes: 3
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - { os: linux, arch: amd64, ext: "" }
+          - { os: linux, arch: arm64, ext: "" }
+          - { os: windows, arch: amd64, ext: ".exe" }
+          - { os: freebsd, arch: amd64, ext: "" }
+          - { os: openbsd, arch: amd64, ext: "" }
+
     steps:
       - uses: actions/checkout@v5
+
       - uses: actions/setup-go@v6
         with:
           go-version: 1.24.x
 
-      - name: Build
-        run: make
+      - name: Build for ${{ matrix.target.os }}-${{ matrix.target.arch }}
+        run: |
+          go build -o "qtv-${GOOS}-${GOARCH}${TARGET_EXT}" ./cmd/qtv-go
+          find .
+        env:
+          GOOS: ${{ matrix.target.os }}
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: 0
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qtv-${{ matrix.target.os }}-${{ matrix.target.arch }}
+          path: qtv-*
+          retention-days: 5
