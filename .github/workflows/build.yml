@@ -24,8 +24,7 @@ jobs:
 
       - name: Build for ${{ matrix.target.os }}-${{ matrix.target.arch }}
         run: |
-          go build -o "qtv-${GOOS}-${GOARCH}${TARGET_EXT}" ./cmd/qtv-go
-          find .
+          go build -ldflags="-s -w" -o "qtv-${GOOS}-${GOARCH}${TARGET_EXT}" ./cmd/qtv-go
         env:
           GOOS: ${{ matrix.target.os }}
           GOARCH: ${{ matrix.target.arch }}
@@ -38,3 +37,4 @@ jobs:
           name: qtv-${{ matrix.target.os }}-${{ matrix.target.arch }}
           path: qtv-*
           retention-days: 5
+          compression-level: 9
